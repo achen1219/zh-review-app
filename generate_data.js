@@ -1,19 +1,24 @@
 // generate_data.js
-// Run: node generate_data.js
-const fetch = require('node-fetch');
+// Usage: node generate_data.js
+// Outputs a data.js file exporting `charDetails` with bopomofo, definitions, examples, phrases2/3/4.
+
+const fetch = require('node-fetch');  // v2
 const fs    = require('fs');
 
-// ← YOUR API KEY HERE ↓
+// ←––– REPLACE this with your actual key from https://pedia.cloud.edu.tw/apiui.html
 const apiKey = 'ca3c6b07-0e0e-4774-a57d-6d0bb178801d';
 
-// 1) Your daily schedule:
+// ─── 1) Your schedule: add new dates/characters here once a month ─────────
 const schedule = {
   "2025-05-07": ["腰","蓋","初","夏","省","桐","包","類","資","影","敦","爾","悟","拆"],
   "2025-05-08": ["取","抬","腰","蓋","初","夏","技","票","周","例","擁","擠","盛","隨"]
+  // …add more dates as needed…
 };
-// flatten + dedupe:
+// flatten & dedupe
 const chars = Array.from(new Set(Object.values(schedule).flat()));
 
+
+// ─── 2) Fetch Mandarin + definitions + Minnan examples ─────────────────────
 async function fetchDetail(ch) {
   const url = `https://pedia.cloud.edu.tw/api/v2/Detail`
             + `?term=${encodeURIComponent(ch)}`
@@ -22,50 +27,93 @@ async function fetchDetail(ch) {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
 
-  // The API returns several nested dicts; we’ll pull from the ones with the richest info:
+  // Pick the first heteronym from revised_dict:
+  const revH   = json.revised_dict?.heteronyms?.[0] || {};
+  // Clean array of definitions from the “mini_dict”
+  const miniH  = json.mini_dict?.heteronyms?.[0]    || {};
+  // Minnan example sentences
+  const minnanH= json.minnan_dict?.heteronyms?.[0]  || {};
 
-  // 1) Revised (標準) dictionary for Mandarin bopomofo + detailed definitions
-  const revH = json.revised_dict?.heteronyms?.[0] || {};
+  // Build clean arrays:
+  const definitions = Array.isArray(miniH.definitions)
+    ? miniH.definitions.map(d => d.def)
+    : (Array.isArray(revH.definitions)
+       ? revH.definitions.map(d => d.def)
+       : []);
 
-  // 2) Mini dictionary for a clean array of definitions
-  const miniH = json.mini_dict?.heteronyms?.[0] || {};
-
-  // 3) Minnan dictionary for example sentences (exp)
-  const minnanH = json.minnan_dict?.heteronyms?.[0] || {};
+  const examples = Array.isArray(minnanH.definitions)
+    ? minnanH.definitions
+        .map(d => d.exp)
+        .filter(exp => !!exp)
+    : [];
 
   return {
-    char: ch,
-
-    // 注音： from revised_dict
-    bopomofo: revH.bopomofo || '',
-
-    // 定義： prefer miniH.definitions (array of { def }), fallback to revH.definitions
-    definitions: Array.isArray(miniH.definitions)
-      ? miniH.definitions.map(d=>d.def)
-      : (Array.isArray(revH.definitions)
-         ? revH.definitions.map(d=>d.def)
-         : []),
-
-    // 例句/用例： from minnan_dict.exp (which is an array of objects with .exp)
-    examples: Array.isArray(minnanH.definitions)
-      ? minnanH.definitions.map(d=>d.exp)
-      : [],
-
-    // 詞語： the v2/Detail endpoint doesn’t supply phrases_2, _3, _4 in this payload,
-    // so we’ll leave these empty (you could call another endpoint if needed)
-    phrases2: [],
-    phrases3: [],
-    phrases4: []
+    char:        ch,
+    bopomofo:    revH.bopomofo || '',
+    definitions,
+    examples
   };
 }
 
-(async () => {
-  // TEST MODE: only fetch one character
-  const testChars = ['腰'];
-  for (const ch of testChars) {
-    const d = await fetchDetail(ch);
-    console.log('Parsed data for', ch, ':', d);
-  }
-  process.exit(0);   // stop the script right here
-})();
 
+// ─── 3) Fetch 2/3/4-character collocations ─────────────────────────────────
+async function fetchCollocations(ch) {
+  const url = `https://pedia.cloud.edu.tw/api/v2/Collocation`
+            + `?term=${encodeURIComponent(ch)}`
+            + `&api_key=${apiKey}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+
+  // First record under .data array
+  const c = Array.isArray(json.data)
+          ? json.data[0]
+          : (json.data || {});
+
+  return {
+    phrases2: Array.isArray(c.phrases_2) ? c.phrases_2 : [],
+    phrases3: Array.isArray(c.phrases_3) ? c.phrases_3 : [],
+    phrases4: Array.isArray(c.phrases_4)
+             ? c.phrases_4
+             : (Array.isArray(c.collocations_4) ? c.collocations_4 : [])
+  };
+}
+
+
+// ─── 4) Main: fetch everything & write data.js ────────────────────────────
+(async () => {
+  const charDetails = {};
+
+  for (const ch of chars) {
+    try {
+      // parallel fetch
+      const [core, coll] = await Promise.all([
+        fetchDetail(ch),
+        fetchCollocations(ch)
+      ]);
+      charDetails[ch] = { ...core, ...coll };
+      console.log('✅ Fetched', ch);
+    } catch (err) {
+      console.warn('⚠️ Failed', ch, err.message);
+      charDetails[ch] = {
+        char: ch,
+        bopomofo: '',
+        definitions: [],
+        examples: [],
+        phrases2: [],
+        phrases3: [],
+        phrases4: []
+      };
+    }
+  }
+
+  // write data.js
+  const out = [
+    '// AUTO-GENERATED by generate_data.js',
+    'export default ',
+    JSON.stringify(charDetails, null, 2),
+    ';'
+  ].join('\n');
+  fs.writeFileSync('data.js', out, 'utf-8');
+  console.log(`🎉 data.js written with ${Object.keys(charDetails).length} entries`);
+})();
