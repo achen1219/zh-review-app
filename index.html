@@ -6,105 +6,152 @@
   <style>
     body { font-family: 'Microsoft JhengHei', sans-serif; padding: 20px; }
     h1, h2 { color: #333; }
-    .flashcard { border:1px solid #ccc; padding:10px; margin:10px 0; border-radius:5px; max-width:360px; }
-    .char { display:inline-block; width:50px; font-size:24px; }
+    .flashcard { 
+      border:1px solid #ccc; padding:10px; margin:10px 0; border-radius:5px; 
+      max-width:360px;
+    }
+    .char { font-size:24px; display:inline-block; width:50px; }
     select, button { font-size:16px; margin-top:8px; }
     #points { margin-top:15px; font-weight:bold; }
+    #result { margin-top:10px; }
   </style>
 </head>
 <body>
+
   <h1>📅 每日複習</h1>
 
+  <!-- 日期選單 -->
   <label for="date-selector">選擇日期：</label>
   <select id="date-selector"></select>
 
+  <!-- 生字卡片 -->
   <h2>🔖 生字卡片</h2>
-  <div id="flashcards"></div>
+  <div id="flashcards">載入中…</div>
 
+  <!-- 遊戲1：字義配對 -->
   <h2>🎮 遊戲1：字義配對</h2>
   <div id="points">積分: 0</div>
   <div id="game1"></div>
   <button id="submitBtn" onclick="checkAnswers()">提交</button>
   <div id="result"></div>
 
-  <!-- 載入排程 -->
+  <!-- 載入 schedule -->
   <script src="schedule.js"></script>
   <script>
-    const dateSel = document.getElementById('date-selector');
-    const flashDiv = document.getElementById('flashcards');
-    const gameDiv  = document.getElementById('game1');
-    const ptsDiv   = document.getElementById('points');
-    const resDiv   = document.getElementById('result');
-    const btn      = document.getElementById('submitBtn');
+    const apiKey = 'ca3c6b07-0e0e-4774-a57d-6d0bb178801d';
+    const dateSel   = document.getElementById('date-selector');
+    const flashDiv  = document.getElementById('flashcards');
+    const gameDiv   = document.getElementById('game1');
+    const ptsDiv    = document.getElementById('points');
+    const resDiv    = document.getElementById('result');
+    const submitBtn = document.getElementById('submitBtn');
 
-    // 填日期
-    for (let d of Object.keys(schedule)) {
-      let o = document.createElement('option');
-      o.value = o.textContent = d;
-      dateSel.appendChild(o);
-    }
-    dateSel.addEventListener('change', () => renderFor(dateSel.value));
-
-    // 分數
+    // 讀本地分數
     let points = Number(localStorage.getItem('zhReviewPoints')||0);
-    function updatePts() { ptsDiv.textContent = '積分: ' + points; }
-    function savePts()   { localStorage.setItem('zhReviewPoints', points); }
+    function updatePts() {
+      ptsDiv.textContent = '積分: ' + points;
+    }
+    function savePts() {
+      localStorage.setItem('zhReviewPoints', points);
+    }
 
-    // 產生當日內容
-    function renderFor(date) {
-      flashDiv.innerHTML = '';
-      gameDiv.innerHTML  = '';
-      resDiv.innerHTML   = '';
-      btn.disabled = false;
+    // 填日期下拉
+    Object.keys(schedule).forEach(date=>{
+      let o = document.createElement('option');
+      o.value = o.textContent = date;
+      dateSel.appendChild(o);
+    });
+    dateSel.addEventListener('change', ()=> renderFor(dateSel.value) );
+
+    // 主渲染函式
+    async function renderFor(date) {
+      flashDiv.innerHTML = '載入中…';
+      gameDiv .innerHTML = '';
+      resDiv  .innerHTML = '';
+      submitBtn.disabled = false;
       updatePts();
 
-      let chars = schedule[date];
-      // 生字卡片
-      for (let ch of chars) {
-        let c = document.createElement('div');
-        c.className = 'flashcard';
-        c.innerHTML = `<h2>${ch}</h2>
-          <button onclick="play('${ch}')">🔊 發音</button>`;
-        flashDiv.appendChild(c);
-      }
-      // 配對遊戲（重複用字本身當「假定義」示範）
-      for (let ch of chars) {
-        let row = document.createElement('div');
+      const chars = schedule[date];
+      // 1. 取得所有字的詳細資料
+      const details = await Promise.all(chars.map(fetchCharDetail));
+
+      // 2. 產生生字卡片
+      flashDiv.innerHTML = '';
+      details.forEach(d => {
+        const card = document.createElement('div');
+        card.className = 'flashcard';
+        card.innerHTML = `
+          <h2>${d.char}</h2>
+          <button onclick="play('${d.char}')">🔊 發音</button>
+          <p>注音：${d.bopomofo}</p>
+          <p>二字：${d.phrases2.join('、')}</p>
+          <p>三字：${d.phrases3.join('、')}</p>
+          <p>四字：${d.phrases4 || ''}</p>
+          <p>定義：${d.definition}</p>
+          <p>例句：${d.exampleSentence}</p>
+        `;
+        flashDiv.appendChild(card);
+      });
+
+      // 3. 產生配對遊戲
+      gameDiv.innerHTML = '';
+      details.forEach(d => {
+        const row = document.createElement('div');
+        row.className = 'item';
+        // 為了示範，錯誤選項隨機取其他一個字的定義
+        const other = details.find(x=>x.char!==d.char);
         row.innerHTML = `
-          <span class="char">${ch}</span>
-          <select data-answer="${ch}">
-            <option value="">-- 選擇 字義 --</option>
-            <option>${ch}</option>
-            <option>錯誤選項</option>
-          </select>`;
+          <span class="char">${d.char}</span>
+          <select data-answer="${d.definition}">
+            <option value="">-- 選擇 定義 --</option>
+            <option>${d.definition}</option>
+            <option>${other.definition}</option>
+          </select>
+        `;
         gameDiv.appendChild(row);
-      }
+      });
     }
 
-    // 檢查答案
-    function checkAnswers() {
-      let sels = document.querySelectorAll('#game1 select');
-      let ok = 0;
-      sels.forEach(s=>{
-        if (s.value===s.getAttribute('data-answer')) ok++;
-        s.disabled = true;
-      });
-      let earn = ok * 5;
-      points += earn; savePts(); updatePts();
-      btn.disabled = true;
-      resDiv.textContent = ok===sels.length
-        ? `👏 全對！ +${earn} 分`
-        : `❌ 答對 ${ok}/${sels.length} 題，+${earn} 分`;
+    // 呼叫 API 拿字詳細
+    async function fetchCharDetail(ch) {
+      const url = `https://pedia.cloud.edu.tw/api/v1/character/${encodeURIComponent(ch)}?api_key=${apiKey}`;
+      const res = await fetch(url);
+      const js  = await res.json();
+      return {
+        char: ch,
+        bopomofo: js.bopomofo || js.pinyin_bopomofo || '',
+        phrases2: js.phrases_2 || [],
+        phrases3: js.phrases_3 || [],
+        phrases4: (js.collocations_4 && js.collocations_4[0]) || '',
+        definition: (js.definitions && js.definitions[0]) || '',
+        exampleSentence: (js.examples && js.examples[0]) || ''
+      };
     }
 
     // 發音
     function play(ch) {
-      let u = new SpeechSynthesisUtterance(ch);
+      const u = new SpeechSynthesisUtterance(ch);
       u.lang = 'zh-TW';
       speechSynthesis.speak(u);
     }
 
-    // 預設載入第一天
+    // 檢查答案
+    function checkAnswers() {
+      const sels = document.querySelectorAll('#game1 select');
+      let ok=0;
+      sels.forEach(s=>{
+        if(s.value===s.getAttribute('data-answer')) ok++;
+        s.disabled=true;
+      });
+      const earn = ok * 5;
+      points += earn; savePts(); updatePts();
+      submitBtn.disabled = true;
+      resDiv.textContent = ok===sels.length
+        ? `👏 全部答對！ +${earn} 分`
+        : `❌ 答對 ${ok}/${sels.length} 題，+${earn} 分`;
+    }
+
+    // 初次載入
     dateSel.value = Object.keys(schedule)[0];
     renderFor(dateSel.value);
   </script>
