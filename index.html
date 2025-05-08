@@ -2,15 +2,103 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
-  <title>每日生字複習</title>
-  <link rel="stylesheet" href="style.css">
-  <script defer src="app.js"></script>
+  <title>每日複習：2025/05/07</title>
+  <style>
+    body { font-family: 'Microsoft JhengHei', sans-serif; padding: 20px; }
+    h1, h2 { color: #333; }
+    .flashcard { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; border-radius: 5px; }
+    .flashcard h2 { display: inline-block; margin: 0; }
+    .flashcard button { margin-left: 10px; }
+    #game1 .item { margin-bottom: 10px; }
+    .char { display: inline-block; width: 50px; font-size: 24px; }
+    select { font-size: 16px; padding: 4px; }
+    #points { font-size: 18px; margin-top: 20px; }
+    button { padding: 6px 12px; font-size: 14px; }
+    #result { margin-top: 10px; font-weight: bold; }
+  </style>
 </head>
 <body>
-  <h1>📅 選擇日期開始複習</h1>
-  <select id="date-selector"></select>
+  <h1>📅 每日複習：2025/05/07</h1>
+
+  <h2>🔖 生字卡片</h2>
   <div id="flashcards"></div>
-  <button onclick="markComplete()">✅ 今天完成</button>
-  <div id="calendar"></div>
+
+  <h2>🎮 遊戲1：字義配對</h2>
+  <div id="points">積分: 0</div>
+  <div id="game1"></div>
+  <button id="submitBtn" onclick="checkAnswers()">提交</button>
+  <div id="result"></div>
+
+  <script>
+    // === 資料 ===
+    const newChars = [
+      { char: '腰', answer: '身體中間的部位' },
+      { char: '蓋', answer: '鍋的蓋子' }
+    ];
+    const reviewChars = ['初','夏','省','桐','包','類','資','影','敦','爾','悟','拆'];
+
+    // === 生字卡片 ===
+    const flashDiv = document.getElementById('flashcards');
+    function createFlashcard(ch) {
+      const div = document.createElement('div');
+      div.className = 'flashcard';
+      div.innerHTML = `<h2>${ch}</h2>
+                       <button onclick="playChar('${ch}')">🔊 發音</button>`;
+      flashDiv.appendChild(div);
+    }
+    newChars.forEach(item => createFlashcard(item.char));
+    reviewChars.forEach(ch => createFlashcard(ch));
+
+    // === 語音播放 ===
+    function playChar(ch) {
+      const u = new SpeechSynthesisUtterance(ch);
+      u.lang = 'zh-TW';
+      speechSynthesis.speak(u);
+    }
+
+    // === 字義配對遊戲 ===
+    const gameDiv = document.getElementById('game1');
+    newChars.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<span class="char">${item.char}</span>
+                       <select data-answer="${item.answer}">
+                         <option value="">-- 選擇 --</option>
+                         <option>身體中間的部位</option>
+                         <option>鍋的蓋子</option>
+                       </select>`;
+      gameDiv.appendChild(div);
+    });
+
+    // === 分數系統（含 LocalStorage） ===
+    let points = Number(localStorage.getItem('zhReviewPoints') || 0);
+    const pointsDisplay = document.getElementById('points');
+    function updatePointsUI() {
+      pointsDisplay.textContent = '積分: ' + points;
+    }
+    function savePoints() {
+      localStorage.setItem('zhReviewPoints', points);
+    }
+    function checkAnswers() {
+      const selects = document.querySelectorAll('#game1 select');
+      let correct = 0;
+      selects.forEach(sel => {
+        if (sel.value === sel.getAttribute('data-answer')) correct++;
+        sel.disabled = true;
+      });
+      const earned = correct * 5;
+      points += earned;
+      savePoints();
+      updatePointsUI();
+      document.getElementById('submitBtn').disabled = true;
+      document.getElementById('result').textContent =
+        correct === selects.length
+          ? `👏 全部答對了！ +${earned} 分`
+          : `❌ 答對 ${correct}/${selects.length} 題，獲得 ${earned} 分`;
+    }
+
+    // 初始化
+    updatePointsUI();
+  </script>
 </body>
 </html>
