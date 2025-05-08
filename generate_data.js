@@ -22,26 +22,40 @@ async function fetchDetail(ch) {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
 
-  // 1) Grab the first item in the data array:
-  const rec = Array.isArray(json.data) 
-            ? json.data[0] 
-            : (json.data || {});
+  // The API returns several nested dicts; we’ll pull from the ones with the richest info:
 
-  // 2) Normalize each field:
+  // 1) Revised (標準) dictionary for Mandarin bopomofo + detailed definitions
+  const revH = json.revised_dict?.heteronyms?.[0] || {};
+
+  // 2) Mini dictionary for a clean array of definitions
+  const miniH = json.mini_dict?.heteronyms?.[0] || {};
+
+  // 3) Minnan dictionary for example sentences (exp)
+  const minnanH = json.minnan_dict?.heteronyms?.[0] || {};
+
   return {
-    char:       ch,
-    bopomofo:   rec.bopomofo || rec.pinyin_bopomofo || '',
-    definitions: rec.definitions
-                  ? (Array.isArray(rec.definitions)
-                      ? rec.definitions
-                      : [rec.definitions])
-                  : [],
-    examples:   Array.isArray(rec.examples)   ? rec.examples   : [],
-    phrases2:   Array.isArray(rec.phrases_2)  ? rec.phrases_2  : [],
-    phrases3:   Array.isArray(rec.phrases_3)  ? rec.phrases_3  : [],
-    phrases4:   Array.isArray(rec.collocations_4)
-                  ? rec.collocations_4 
-                  : []
+    char: ch,
+
+    // 注音： from revised_dict
+    bopomofo: revH.bopomofo || '',
+
+    // 定義： prefer miniH.definitions (array of { def }), fallback to revH.definitions
+    definitions: Array.isArray(miniH.definitions)
+      ? miniH.definitions.map(d=>d.def)
+      : (Array.isArray(revH.definitions)
+         ? revH.definitions.map(d=>d.def)
+         : []),
+
+    // 例句/用例： from minnan_dict.exp (which is an array of objects with .exp)
+    examples: Array.isArray(minnanH.definitions)
+      ? minnanH.definitions.map(d=>d.exp)
+      : [],
+
+    // 詞語： the v2/Detail endpoint doesn’t supply phrases_2, _3, _4 in this payload,
+    // so we’ll leave these empty (you could call another endpoint if needed)
+    phrases2: [],
+    phrases3: [],
+    phrases4: []
   };
 }
 
