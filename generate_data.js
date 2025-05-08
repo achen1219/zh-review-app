@@ -15,21 +15,16 @@ const schedule = {
 const chars = Array.from(new Set(Object.values(schedule).flat()));
 
 async function fetchDetail(ch) {
-  const url = `https://pedia.cloud.edu.tw/api/v2/Detail`
-            + `?term=${encodeURIComponent(ch)}`
-            + `&api_key=${apiKey}`;
-  console.log(`\n→ Fetching URL for "${ch}":\n  ${url}`);
+  const url = `https://pedia.cloud.edu.tw/api/v2/Detail?term=${encodeURIComponent(ch)}&api_key=${apiKey}`;
+  console.log('\n→ Fetching for', ch, 'URL:', url);
 
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  
   const json = await res.json();
+  console.log('Raw JSON for', ch, ':', JSON.stringify(json, null, 2));
 
-  // Dump the raw JSON for just this one char:
-  console.log(`Response for "${ch}":\n`, JSON.stringify(json, null, 2));
-
-  // Now pick the payload, either under .data or top‐level
-  const d = json.data || json;
-
+  const d = json.data || json;    // adjust this line after you see json
   return {
     bopomofo:    d.bopomofo    || d.pinyin_bopomofo || '',
     definitions: d.definitions || (d.definition ? [d.definition] : []),
