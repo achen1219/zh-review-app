@@ -15,18 +15,23 @@ const schedule = {
 const chars = Array.from(new Set(Object.values(schedule).flat()));
 
 async function fetchDetail(ch) {
-  // ✅ Use v2/Detail with "term" parameter
   const url = `https://pedia.cloud.edu.tw/api/v2/Detail?term=${encodeURIComponent(ch)}&api_key=${apiKey}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const { data } = await res.json();
+  
+  // get the full JSON
+  const json = await res.json();
+
+  // sometimes the API nests the payload under "data", sometimes directly at top level
+  const d = json.data || json;
+
   return {
-    bopomofo:    data.bopomofo     || '',
-    definitions: data.definitions || [],
-    examples:    data.examples    || [],
-    phrases2:    data.phrases_2   || [],
-    phrases3:    data.phrases_3   || [],
-    phrases4:    data.collocations_4 || []
+    bopomofo:    d.bopomofo    || d.pinyin_bopomofo || '',
+    definitions: d.definitions || (d.definition ? [d.definition] : []),
+    examples:    d.examples    || [],
+    phrases2:    d.phrases_2   || [],
+    phrases3:    d.phrases_3   || [],
+    phrases4:    d.collocations_4 || []
   };
 }
 
