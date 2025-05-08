@@ -15,23 +15,33 @@ const schedule = {
 const chars = Array.from(new Set(Object.values(schedule).flat()));
 
 async function fetchDetail(ch) {
-  const url = `https://pedia.cloud.edu.tw/api/v2/Detail?term=${encodeURIComponent(ch)}&api_key=${apiKey}`;
-  console.log('\n→ Fetching for', ch, 'URL:', url);
-
-  const res = await fetch(url);
+  const url = `https://pedia.cloud.edu.tw/api/v2/Detail`
+            + `?term=${encodeURIComponent(ch)}`
+            + `&api_key=${apiKey}`;
+  const res  = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  
   const json = await res.json();
-  console.log('Raw JSON for', ch, ':', JSON.stringify(json, null, 2));
 
-  const d = json.data || json;    // adjust this line after you see json
+  // 1) Grab the first item in the data array:
+  const rec = Array.isArray(json.data) 
+            ? json.data[0] 
+            : (json.data || {});
+
+  // 2) Normalize each field:
   return {
-    bopomofo:    d.bopomofo    || d.pinyin_bopomofo || '',
-    definitions: d.definitions || (d.definition ? [d.definition] : []),
-    examples:    d.examples    || [],
-    phrases2:    d.phrases_2   || [],
-    phrases3:    d.phrases_3   || [],
-    phrases4:    d.collocations_4 || []
+    char:       ch,
+    bopomofo:   rec.bopomofo || rec.pinyin_bopomofo || '',
+    definitions: rec.definitions
+                  ? (Array.isArray(rec.definitions)
+                      ? rec.definitions
+                      : [rec.definitions])
+                  : [],
+    examples:   Array.isArray(rec.examples)   ? rec.examples   : [],
+    phrases2:   Array.isArray(rec.phrases_2)  ? rec.phrases_2  : [],
+    phrases3:   Array.isArray(rec.phrases_3)  ? rec.phrases_3  : [],
+    phrases4:   Array.isArray(rec.collocations_4)
+                  ? rec.collocations_4 
+                  : []
   };
 }
 
