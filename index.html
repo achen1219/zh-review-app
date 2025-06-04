@@ -1,159 +1,101 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="UTF-8">
-  <title>每日複習</title>
+  <meta charset="UTF-8" />
+  <title>每日生字複習</title>
   <style>
-    body { font-family: 'Microsoft JhengHei', sans-serif; padding: 20px; }
-    h1, h2 { color: #333; }
-    .flashcard { 
-      border:1px solid #ccc; padding:10px; margin:10px 0; border-radius:5px; 
-      max-width:360px;
+    body { font-family: sans-serif; padding: 20px; }
+    h1 { margin-bottom: 10px; }
+    /* 圖例 */
+    .legend span {
+      display:inline-block; width:12px; height:12px; margin-right:4px;
+      vertical-align:middle;
+      border:1px solid #ddd;
     }
-    .char { font-size:24px; display:inline-block; width:50px; }
-    select, button { font-size:16px; margin-top:8px; }
-    #points { margin-top:15px; font-weight:bold; }
-    #result { margin-top:10px; }
+    .legend .has-schedule { background:#eef; }
+    .legend .completed    { background:#cfc; }
+    .legend .today-box     { border:2px solid #f90; background: transparent; }
+
+    /* 月曆格 */
+    #calendar {
+      display: grid;
+      grid-template-columns: repeat(7,1fr);
+      gap: 4px;
+      margin: 10px 0 20px;
+    }
+    #calendar div {
+      padding: 8px;
+      text-align: center;
+      border: 1px solid #ddd;
+      cursor: pointer;
+      user-select: none;
+    }
+    #calendar .has-schedule { background: #eef; }
+    #calendar .completed    { background: #cfc; }
+    #calendar .today        { border: 2px solid #f90; }
+    #calendar .selected     { outline: 2px solid #06c; }
+
+    /* Flashcard */
+    .flashcard {
+      border: 1px solid #ccc;
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 8px;
+      background: #f9f9f9;
+    }
+    .flashcard h4 { margin: 0 0 5px; font-size: 1.2em; }
+    .flashcard ul { margin: 5px 0 10px 20px; padding: 0; list-style: disc; }
+    .flashcard em { font-style: italic; }
+    button { padding: 5px 10px; margin: 5px; }
   </style>
 </head>
 <body>
+  <h1>每日生字複習</h1>
 
-  <h1>📅 每日複習</h1>
+  <!-- 圖例 -->
+  <div class="legend">
+    <span class="has-schedule"></span> 有排程
+    <span class="completed"></span> 已完成
+    <span class="today-box"></span> 今天
+  </div>
 
-  <!-- 日期選單 -->
-  <label for="date-selector">選擇日期：</label>
-  <select id="date-selector"></select>
+  <!-- 月份導航 -->
+  <button id="prevMonth">&lt;</button>
+  <span id="monthLabel"></span>
+  <button id="nextMonth">&gt;</button>
 
-  <!-- 生字卡片 -->
-  <h2>🔖 生字卡片</h2>
-  <div id="flashcards">載入中…</div>
+  <!-- 月曆格 -->
+  <div id="calendar"></div>
 
-  <!-- 遊戲1：字義配對 -->
-  <h2>🎮 遊戲1：字義配對</h2>
-  <div id="points">積分: 0</div>
-  <div id="game1"></div>
-  <button id="submitBtn" onclick="checkAnswers()">提交</button>
-  <div id="result"></div>
+  <!-- 生字卡片顯示區 -->
+  <main id="contentArea"></main>
 
-  <!-- 載入 schedule -->
-  <script src="schedule.js"></script>
-  <script>
-    const apiKey = 'ca3c6b07-0e0e-4774-a57d-6d0bb178801d';
-    const dateSel   = document.getElementById('date-selector');
-    const flashDiv  = document.getElementById('flashcards');
-    const gameDiv   = document.getElementById('game1');
-    const ptsDiv    = document.getElementById('points');
-    const resDiv    = document.getElementById('result');
-    const submitBtn = document.getElementById('submitBtn');
-
-    // 讀本地分數
-    let points = Number(localStorage.getItem('zhReviewPoints')||0);
-    function updatePts() {
-      ptsDiv.textContent = '積分: ' + points;
-    }
-    function savePts() {
-      localStorage.setItem('zhReviewPoints', points);
+  <style>
+    /* 1. 定義自訂字型 */
+    @font-face {
+      font-family: 'ToneOZZhuyin';
+      src: url('./fonts/ToneOZ-Zhuyin-Tsuipita-TC.woff2') format('woff2');
+      font-weight: normal;
+      font-style: normal;
+      
     }
 
-    // 填日期下拉
-    Object.keys(schedule).forEach(date=>{
-      let o = document.createElement('option');
-      o.value = o.textContent = date;
-      dateSel.appendChild(o);
-    });
-    dateSel.addEventListener('change', ()=> renderFor(dateSel.value) );
+   /* 2. 只讓 flashcard 使用這個字型，並放大字型 */
+.flashcard {
+  font-family: 'ToneOZZhuyin', serif;
+  font-size: 1.5rem;    /* 主字放大到 1.5 倍 */
+  line-height: 1.4;     /* 增加行高，避免擠在一起 */
+}
 
-    // 主渲染函式
-    async function renderFor(date) {
-      flashDiv.innerHTML = '載入中…';
-      gameDiv .innerHTML = '';
-      resDiv  .innerHTML = '';
-      submitBtn.disabled = false;
-      updatePts();
+/* 放大注音字型 */
+.flashcard span.pinyin {
+  font-family: 'ToneOZZhuyin', serif;
+  font-size: 1.3rem;    /* 注音放大到 1.3 倍 */
+  line-height: 1.2;
+}
+  </style>
 
-      const chars = schedule[date];
-      // 1. 取得所有字的詳細資料
-      const details = await Promise.all(chars.map(fetchCharDetail));
-
-      // 2. 產生生字卡片
-      flashDiv.innerHTML = '';
-      details.forEach(d => {
-        const card = document.createElement('div');
-        card.className = 'flashcard';
-        card.innerHTML = `
-          <h2>${d.char}</h2>
-          <button onclick="play('${d.char}')">🔊 發音</button>
-          <p>注音：${d.bopomofo}</p>
-          <p>二字：${d.phrases2.join('、')}</p>
-          <p>三字：${d.phrases3.join('、')}</p>
-          <p>四字：${d.phrases4 || ''}</p>
-          <p>定義：${d.definition}</p>
-          <p>例句：${d.exampleSentence}</p>
-        `;
-        flashDiv.appendChild(card);
-      });
-
-      // 3. 產生配對遊戲
-      gameDiv.innerHTML = '';
-      details.forEach(d => {
-        const row = document.createElement('div');
-        row.className = 'item';
-        // 為了示範，錯誤選項隨機取其他一個字的定義
-        const other = details.find(x=>x.char!==d.char);
-        row.innerHTML = `
-          <span class="char">${d.char}</span>
-          <select data-answer="${d.definition}">
-            <option value="">-- 選擇 定義 --</option>
-            <option>${d.definition}</option>
-            <option>${other.definition}</option>
-          </select>
-        `;
-        gameDiv.appendChild(row);
-      });
-    }
-
-    // 呼叫 API 拿字詳細
-    async function fetchCharDetail(ch) {
-      const url = `https://pedia.cloud.edu.tw/api/v1/character/${encodeURIComponent(ch)}?api_key=${apiKey}`;
-      const res = await fetch(url);
-      const js  = await res.json();
-      return {
-        char: ch,
-        bopomofo: js.bopomofo || js.pinyin_bopomofo || '',
-        phrases2: js.phrases_2 || [],
-        phrases3: js.phrases_3 || [],
-        phrases4: (js.collocations_4 && js.collocations_4[0]) || '',
-        definition: (js.definitions && js.definitions[0]) || '',
-        exampleSentence: (js.examples && js.examples[0]) || ''
-      };
-    }
-
-    // 發音
-    function play(ch) {
-      const u = new SpeechSynthesisUtterance(ch);
-      u.lang = 'zh-TW';
-      speechSynthesis.speak(u);
-    }
-
-    // 檢查答案
-    function checkAnswers() {
-      const sels = document.querySelectorAll('#game1 select');
-      let ok=0;
-      sels.forEach(s=>{
-        if(s.value===s.getAttribute('data-answer')) ok++;
-        s.disabled=true;
-      });
-      const earn = ok * 5;
-      points += earn; savePts(); updatePts();
-      submitBtn.disabled = true;
-      resDiv.textContent = ok===sels.length
-        ? `👏 全部答對！ +${earn} 分`
-        : `❌ 答對 ${ok}/${sels.length} 題，+${earn} 分`;
-    }
-
-    // 初次載入
-    dateSel.value = Object.keys(schedule)[0];
-    renderFor(dateSel.value);
-  </script>
+  <!-- 載入 app.js -->
+  <script src="app.js"></script>
 </body>
 </html>
