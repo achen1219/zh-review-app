@@ -10,52 +10,54 @@ function shuffle(arr) {
 
 // 2. 全域變數
 let tzDict = {};
-let schedule = {};  // We will dynamically generate this daily
+let learnedList = [];
 let curDate = new Date();
 
-// 3. 載入字典 (tzdict.json)，不載入 schedule.json
-fetch('tzdict.json')
-  .then(r => r.json())
-  .then(dictData => {
-    tzDict = dictData;
-    initCalendar();
-  })
-  .catch(err => console.error('載入失敗：', err));
+// 3. 載入字典 (tzdict.json) 和 學過字清單 (learned.txt)
+Promise.all([
+  fetch('tzdict.json').then(r => r.json()),
+  fetch('learned.txt').then(r => r.text())
+])
+.then(([dictData, learnedText]) => {
+  tzDict = dictData;
+  learnedList = learnedText.trim().split('\n').map(s => s.trim()).filter(s => s.length > 0);
+  initCalendar();
+})
+.catch(err => console.error('載入失敗：', err));
 
 // Helper: get date string YYYY-MM-DD
 function dateStr(date) {
   return date.toISOString().slice(0,10);
 }
 
-// Generate or get daily random 10 chars for a given date
+// 4. 取得或生成每日字詞（從學過字列表選）
 function getDailyChars(date) {
   const key = `dailyWords_${date}`;
   const saved = localStorage.getItem(key);
   if (saved) return JSON.parse(saved);
 
-  // Generate 10 random unique characters from tzDict keys
-  const keys = Object.keys(tzDict);
-  shuffle(keys);
-  const daily = keys.slice(0, 10);
+  const listCopy = [...learnedList];
+  shuffle(listCopy);
+  const daily = listCopy.slice(0, 10);
 
   localStorage.setItem(key, JSON.stringify(daily));
   return daily;
 }
 
-// 4. 初始化月曆按鈕
+// 5. 初始化月曆按鈕
 function initCalendar() {
   document.getElementById('prevMonth').onclick = () => changeMonth(-1);
   document.getElementById('nextMonth').onclick = () => changeMonth(1);
   renderCalendar();
 }
 
-// 5. 切換月份
+// 6. 切換月份
 function changeMonth(offset) {
   curDate.setMonth(curDate.getMonth() + offset);
   renderCalendar();
 }
 
-// 6. 繪製月曆
+// 7. 繪製月曆
 function renderCalendar() {
   const cal = document.getElementById('calendar');
   cal.innerHTML = '';
@@ -76,26 +78,27 @@ function renderCalendar() {
     cell.textContent=d; 
     cell.dataset.date=dateKey;
 
-    // We consider a date "has schedule" if it has any generated words
+    // Consider "has schedule" if daily chars for the date exist and length>0
     if(getDailyChars(dateKey).length > 0) cell.classList.add('has-schedule');
     if(localStorage.getItem(dateKey)==='done') cell.classList.add('completed');
     if(dateKey===today) cell.classList.add('today');
     cell.onclick=()=>selectDate(dateKey,cell);
     cal.appendChild(cell);
   }
-  const pick = localStorage.getItem(today)==='done'? today : Object.keys(schedule)[0] || today;
+  // Select today or first date with words
+  const pick = localStorage.getItem(today)==='done'? today : today;
   const c=document.querySelector(`#calendar div[data-date="${pick}"]`);
   if(c) selectDate(pick,c);
 }
 
-// 7. 選擇日期
+// 8. 選擇日期
 function selectDate(dateStr,cell){
   document.querySelectorAll('#calendar .selected').forEach(x=>x.classList.remove('selected'));
   cell.classList.add('selected');
   loadDay(dateStr);
 }
 
-// 8. 顯示當日生字與按鈕
+// 9. 顯示當日生字與按鈕
 function loadDay(date){
   const area = document.getElementById('contentArea');
   const prev = localStorage.getItem(`score-${date}`);
@@ -125,7 +128,7 @@ function loadDay(date){
   area.appendChild(btnQuiz);
 }
 
-// 9. 建立生字卡（保持你原本的樣式和資料取用）
+// 10. 建立生字卡（保持你原本的樣式和資料取用）
 function createFlashcard(ch){
   const info=tzDict[ch]||{}, 
         bop=info.bopomofo||'—', 
@@ -151,7 +154,7 @@ function createFlashcard(ch){
   return card;
 }
 
-// 10. 小測驗功能維持不變，只是改用傳入的 dailyChars
+// 11. 小測驗功能維持不變
 function startQuiz(date,chars){
   if(!Array.isArray(chars)||chars.length<2){ alert('字數不足'); return; }
   const pool=[...chars], front=pool.splice(0,2); shuffle(pool); const quizChars=front.concat(pool.slice(0,8));
